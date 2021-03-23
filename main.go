@@ -20,12 +20,12 @@ func main() {
 		return
 	}
 
-	url, err := getURLImage(os.Args[1])
+	htmlMeta, err := getHTMLMeta(os.Args[1])
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	success, err := downloadFile(url, getRandomString()+".jpeg")
+	success, err := downloadFile(htmlMeta)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -33,8 +33,18 @@ func main() {
 
 }
 
-func downloadFile(URL, fileName string) (string, error) {
-	response, err := http.Get(URL)
+func downloadFile(htmlMeta *HTMLMeta) (string, error) {
+	var url string
+	var filenameExt string
+	if htmlMeta.Video != "" {
+		url = htmlMeta.Video
+		filenameExt = "mp4"
+	} else {
+		url = htmlMeta.Image
+		filenameExt = "jpeg"
+	}
+
+	response, err := http.Get(url)
 	if err != nil {
 		return "", err
 	}
@@ -44,7 +54,8 @@ func downloadFile(URL, fileName string) (string, error) {
 		return "", errors.New("Received non 200 response code")
 	}
 
-	file, err := os.Create(fileName)
+	filename := getRandomString() + "." + filenameExt
+	file, err := os.Create(filename)
 	if err != nil {
 		return "", err
 	}
@@ -55,30 +66,31 @@ func downloadFile(URL, fileName string) (string, error) {
 		return "", err
 	}
 
-	return "Success download filename: " + fileName, nil
+	return "Success download filename: " + filename, nil
 }
 
-func getURLImage(url string) (string, error) {
+func getHTMLMeta(url string) (*HTMLMeta, error) {
 	req, err := http.NewRequest("GET", url, nil)
+	htmlMeta := HTMLMeta{}
 	if err != nil {
-		return "", err
+		return &htmlMeta, err
 	}
 	req.Header.Set("User-Agent", "Instagram 10.3.2 (iPhone7,2; iPhone OS 9_3_3; en_US; en-US; scale=2.00; 750x1334) AppleWebKit/420+")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return &htmlMeta, err
 	}
 
 	if resp.StatusCode != 200 {
-		return "", errors.New(resp.Status)
+		return &htmlMeta, errors.New(resp.Status)
 	}
 
 	defer resp.Body.Close()
 
 	meta := extract(resp.Body)
-	return meta.Image, nil
+	return meta, nil
 }
 
 type HTMLMeta struct {
@@ -86,6 +98,7 @@ type HTMLMeta struct {
 	Description string `json:"description"`
 	Image       string `json:"image"`
 	SiteName    string `json:"site_name"`
+	Video       string `json:"video"`
 }
 
 func extract(resp io.Reader) *HTMLMeta {
@@ -132,6 +145,11 @@ func extract(resp io.Reader) *HTMLMeta {
 				ogSiteName, ok := extractMetaProperty(t, "og:site_name")
 				if ok {
 					hm.SiteName = ogSiteName
+				}
+
+				ogVideo, ok := extractMetaProperty(t, "og:video")
+				if ok {
+					hm.Video = ogVideo
 				}
 			}
 		case html.TextToken:
