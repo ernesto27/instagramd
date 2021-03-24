@@ -11,8 +11,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"golang.org/x/net/html"
 )
+
+type WriteCounter struct {
+	Total uint64
+}
+
+type HTMLMeta struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Image       string `json:"image"`
+	SiteName    string `json:"site_name"`
+	Video       string `json:"video"`
+}
 
 func main() {
 	if len(os.Args) == 1 {
@@ -29,7 +42,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
-	fmt.Println(success)
+	fmt.Println("\n" + success)
 
 }
 
@@ -61,7 +74,8 @@ func downloadFile(htmlMeta *HTMLMeta) (string, error) {
 	}
 	defer file.Close()
 
-	_, err = io.Copy(file, response.Body)
+	counter := &WriteCounter{}
+	_, err = io.Copy(file, io.TeeReader(response.Body, counter))
 	if err != nil {
 		return "", err
 	}
@@ -91,14 +105,6 @@ func getHTMLMeta(url string) (*HTMLMeta, error) {
 
 	meta := extract(resp.Body)
 	return meta, nil
-}
-
-type HTMLMeta struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Image       string `json:"image"`
-	SiteName    string `json:"site_name"`
-	Video       string `json:"video"`
 }
 
 func extract(resp io.Reader) *HTMLMeta {
@@ -186,4 +192,16 @@ func getRandomString() string {
 		output.WriteString(string(randomChar))
 	}
 	return output.String()
+}
+
+func (wc *WriteCounter) Write(p []byte) (int, error) {
+	n := len(p)
+	wc.Total += uint64(n)
+	wc.PrintProgress()
+	return n, nil
+}
+
+func (wc WriteCounter) PrintProgress() {
+	fmt.Printf("\r%s", strings.Repeat(" ", 35))
+	fmt.Printf("\rDownloading... %s complete", humanize.Bytes(wc.Total))
 }
